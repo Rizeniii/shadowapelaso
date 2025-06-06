@@ -1,0 +1,971 @@
+makefolder("builds")
+game:GetService("Workspace").CantBuild:ClearAllChildren()
+game:GetService("Workspace").CantCraft:ClearAllChildren()
+
+getgenv().ItemOptions = {
+    Priority = "Farthest",
+    Type = "Any",
+    ItemName = "Any",
+    Amount = 1
+}
+
+getgenv().BuildingOptions = {
+    Priority = "Farthest",
+    ObjectName = "Any",
+    Script = "No script"
+}
+
+getgenv().FarmingOptions = {
+    Type = "Wood"
+}
+
+getgenv().ExtraOptions = {}
+
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+local HttpService = game:GetService("HttpService")
+
+local Wally = loadstring(game:HttpGet(('https://raw.githubusercontent.com/Xan007/MyExploit/master/libs/Wally.lua')))()
+local MainFunctions = loadstring(game:HttpGet('https://raw.githubusercontent.com/Xan007/MyExploit/master/MainFunctions.lua'))()
+
+local Trove = loadstring(game:HttpGet(('https://raw.githubusercontent.com/Sleitnick/RbxUtil/main/modules/trove/init.lua'),true))()
+local TableUtil = loadstring(game:HttpGet(('https://raw.githubusercontent.com/Sleitnick/RbxUtil/main/modules/table-util/init.lua'), true))()
+
+local MainTrover = Trove.new()
+local BuildingTrover = MainTrover:Extend()
+local FarmingTrover = MainTrover:Extend()
+local TeleportTrover = MainTrover:Extend()
+
+local w = Wally:CreateWindow("096 Exploit")
+local uiItems = w:CreateFolder("Items")
+local uiBuilding = w:CreateFolder("Building")
+local uiFarming = w:CreateFolder("Farming")
+local uiExtras = w:CreateFolder("Extras")
+local uiSettings = w:CreateFolder("Settings")
+uiSettings:DestroyGui()
+
+uiFarming:Label("Type of farming", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255);
+    BgColor = Color3.fromRGB(30, 30, 30); 
+})
+
+uiFarming:Dropdown(FarmingOptions.Type, {"Wood", "Stone"}, true, function(opt)
+    FarmingOptions.Type = opt
+end)
+
+uiFarming:Button("Start Farming", function()
+    StartFarming()
+end)
+
+uiFarming:Button("Stop Farming", function()
+    StopFarming()
+end)
+
+function GetNameItems()
+    local newObjectList = {"Any"}
+
+    local function insert(v)
+        if table.find(newObjectList, v.Name) then
+            return
+        end
+
+        table.insert(newObjectList, v.Name)
+    end
+
+    for _, v in ipairs(game:GetService("Workspace").Interact:GetChildren()) do
+        if (string.match(v.Name, "]$") == nil) then
+            insert(v)
+        end
+    end
+
+    for _, v in ipairs(game:GetService("ReplicatedStorage").Foods:GetChildren()) do
+        insert(v)
+    end
+
+    for _, v in ipairs(game:GetService("ReplicatedStorage").Craftable:GetChildren()) do
+        insert(v)
+    end
+
+    table.sort(newObjectList, function(a, b)
+        return a < b
+    end)
+
+    return newObjectList
+end
+
+local BuildDropdown = nil
+
+local listNameItems = GetNameItems()
+
+uiBuilding:Box("Search", "string", function(search)
+    local newList = {}
+
+    if string.match(search, "^%s*$") ~= nil then
+        newList = listNameItems
+    else
+        for _, nameObject in ipairs(listNameItems) do
+            if (string.match(nameObject, search)) then
+                table.insert(newList, nameObject)
+            end
+        end
+    end
+
+    BuildDropdown:Refresh(newList)
+end)
+
+uiBuilding:Label("Object name", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255);
+    BgColor = Color3.fromRGB(30, 30, 30); 
+})
+
+BuildDropdown = uiBuilding:Dropdown(BuildingOptions.ObjectName, listNameItems, true, function(opt)
+    BuildingOptions.ObjectName = opt
+end)
+
+
+uiBuilding:Label("Scripts builds", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255);
+    BgColor = Color3.fromRGB(30, 30, 30); 
+})
+
+local buildFiles = uiBuilding:Dropdown(BuildingOptions.Script, listfiles("builds"), true, function(opt)
+    BuildingOptions.Script = opt
+end)
+
+uiBuilding:Button("Update", function()
+    buildFiles:Refresh(listfiles("builds"))
+end)
+
+uiBuilding:Label("Priority search", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255); 
+    BgColor = Color3.fromRGB(30, 30, 30);
+})
+
+uiBuilding:Dropdown(BuildingOptions.Priority, {"Nearest", "Farthest"}, true, function(opt)
+    BuildingOptions.Priority = opt
+end)
+
+uiBuilding:Button("Get one", function()
+    if (not BuildingOptions.ObjectName) then
+        return
+    end
+
+    print("Aqui")
+
+    StartBuilding({            
+        {BuildingOptions.ObjectName, {0,0,0}, {0,0,0}}, 
+        -15
+    })
+end)
+
+uiBuilding:Button("Craft one", function()
+    if (not BuildingOptions.ObjectName) then
+        return
+    end
+
+    local Crafted = MainFunctions.Craft(BuildingOptions.ObjectName)
+    if not Crafted then
+        return false
+    end
+
+    StartBuilding({            
+        {Crafted, {0,0,0}, {0,0,0}}, 
+        -15
+    })
+end)
+
+uiBuilding:Button("Execute build", function()
+    if (not BuildingOptions.Script) then
+        return
+    end
+
+    StartBuilding(HttpService:JSONDecode(readfile(BuildingOptions.Script)))
+end)
+
+uiBuilding:Button("Stop building", function()
+    BuildingTrover:Clean()
+end)
+
+uiBuilding:Button("Restart CFrames", function()
+    for _, model in ipairs(game:GetService("Workspace").Interact:GetChildren()) do
+        model:SetAttribute("HackCFrame", nil)
+    end
+end)
+
+uiBuilding:Button("ReturnAllMaterials", function()
+    ReturnAllMaterials()
+end)
+
+--[[ VARIABLES ]]
+
+local itemDropdown = nil
+
+uiItems:Label("Type of item", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255); 
+    BgColor = Color3.fromRGB(30, 30, 30); 
+})
+
+function GetItemsName(opt)
+    local newItemList = {"Any"}
+
+    for _, v in ipairs(game:GetService("ReplicatedStorage").Foods:GetChildren()) do
+        if opt ~= "Any" and v:GetAttribute("Type") ~= opt then
+            continue
+        end
+
+        if table.find(newItemList, v.Name) == nil then
+            table.insert(newItemList, v.Name)
+        end
+    end
+
+    return newItemList
+end
+
+uiItems:Dropdown("Any", {"Any", "Tool", "Food"}, true, function(opt)
+    local newObjectList = GetItemsName(opt)
+
+    itemDropdown:Refresh(newObjectList)
+
+    ItemOptions.Type = opt
+end)
+
+uiItems:Label("Item name", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255);
+    BgColor = Color3.fromRGB(30, 30, 30); 
+})
+
+itemDropdown = uiItems:Dropdown("Any", GetItemsName("Any"), true, function(opt)
+    ItemOptions.ItemName = opt
+end)
+
+uiItems:Label("Priority search", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255); 
+    BgColor = Color3.fromRGB(30, 30, 30);
+})
+
+uiItems:Dropdown("Farthest", {"Nearest", "Farthest"}, true, function(opt)
+    ItemOptions.Priority = opt
+end)
+
+uiItems:Label("Functions", {
+    TextSize = 18; 
+    TextColor = Color3.fromRGB(255,255,255);
+    BgColor = Color3.fromRGB(30, 30, 30); 
+})
+
+uiItems:Box("Amount", "number", function(value)
+    ItemOptions.Amount = tonumber(value)
+end)
+
+uiItems:Button("Get", function() 
+    MainFunctions.UpdatePlayerData()
+    GetItems(ItemOptions.Amount)
+end)
+
+uiItems:Button("Drop", function() 
+    MainFunctions.UpdatePlayerData()
+    DropItems(ItemOptions.Amount)
+end)
+
+function GetVendingMachine()
+    local VendingMachine;
+
+    for _, v in ipairs(game.Workspace.Interact:GetChildren()) do
+        if v:GetAttribute("OGName") == "Vending Machine" and tonumber(v:GetAttribute("Owner")) == LocalPlayer.UserId then
+            VendingMachine = v
+            break
+        end
+    end
+
+    return VendingMachine
+end
+
+function UpdateVendingCatalog()
+    local VendingMachine = GetVendingMachine()
+
+    if not VendingMachine then return end
+
+    local VendingFrame = LocalPlayer.PlayerGui.Main.Vending
+
+    game.ReplicatedStorage.Remotes.ObjectInteract:FireServer(VendingMachine)
+
+    repeat
+        task.wait()
+    until VendingFrame.Visible == true
+
+    repeat
+        firesignal(VendingFrame.Top.Exit.MouseButton1Down)
+        task.wait()
+    until VendingFrame.Visible == false
+
+    return true
+end
+
+uiItems:Button("Clone", function()
+    MainFunctions.UpdatePlayerData()
+
+    local ItemToClone = game.ReplicatedStorage.Foods:FindFirstChild(ItemOptions.ItemName)
+    local AmountToClone = tonumber(ItemOptions.Amount) -- Clonar? para quitar referencia...
+
+    if not ItemToClone then
+        return
+    end
+
+    -- Verificar que haya una vending machine
+    local VendingMachine = GetVendingMachine()
+
+    if not VendingMachine then return end
+    
+    -- Verificar que haya espacio en la vending machine
+    --+ Extra: Verificar si el item ya esta en la vending machine
+
+    UpdateVendingCatalog()
+
+    local VendingFrame = LocalPlayer.PlayerGui.Main.Vending
+    local VendingItems = VendingFrame.Bottom.Items.Items
+    
+    local ItemsVending = {}
+    local IsInVending = VendingItems:FindFirstChild(ItemToClone.Name) ~= nil
+
+    for _, v in ipairs(VendingItems:GetChildren()) do
+        if game.ReplicatedStorage.Foods:FindFirstChild(v.Name) then
+            table.insert(ItemsVending, v.Name)
+        end
+    end
+
+    if #ItemsVending == 12 then return end
+
+    if not IsInVending then
+        if MainFunctions.GetItemAmount(ItemToClone.Name) == 0 then
+            GetItems(1)
+
+            MainFunctions.UpdatePlayerData()
+            if MainFunctions.GetItemAmount(ItemToClone.Name) == 0 then
+                --No se pudo obtener por alguna razon...
+                return
+            end
+        end
+        
+        game.ReplicatedStorage.Remotes.ChangeVendingItem:FireServer(unpack({
+            [1] = "Add",
+            [2] = {
+                [1] = "Items",
+                [2] = ItemToClone.Name,
+                [3] = 999999
+            }
+        }))
+
+        MainFunctions.UpdatePlayerData()
+    end
+
+    UpdateVendingCatalog()
+
+    -- Ejecutar el codigo de clonar
+    local initialAmount = MainFunctions.GetItemAmount(ItemToClone.Name)
+    local currAmount = 0
+
+    while currAmount < AmountToClone do
+        if not MainFunctions.CanSaveItem(ItemToClone) then
+            break
+        end
+
+        if not VendingItems:FindFirstChild(ItemToClone.Name) then
+            break
+        end
+
+        local args = {
+            [1] = "Delete",
+            [2] = {
+                [1] = "Items",
+                [2] = ItemToClone.Name,
+                [3] = math.huge
+            }
+        }
+        
+        game.ReplicatedStorage.Remotes.ChangeVendingItem:FireServer(unpack(args))
+
+        MainFunctions.UpdatePlayerData()
+        currAmount = MainFunctions.GetItemAmount(ItemToClone.Name)
+
+        if ItemToClone:GetAttribute("Type") == "Tool" then
+            currAmount = (currAmount - initialAmount)/4
+        else
+            currAmount -= initialAmount
+        end
+
+        task.wait()
+    end
+end)
+
+function DropItems(limit)
+    limit = limit or math.huge
+
+    local dropAmount = 0
+
+    local TypeSearch = ItemOptions.Type
+    local NameSearch = ItemOptions.ItemName
+
+    for _, itemTable in ipairs(MainFunctions.GetBackpackItems()) do
+        if (dropAmount >= limit) then
+            break
+        end
+
+        local name = itemTable[1]
+        local itemAmount = itemTable[2]
+
+        local modelItem = game:GetService("ReplicatedStorage").Foods:FindFirstChild(name)
+
+        if NameSearch ~= "Any" and name ~= NameSearch  then
+            continue
+        end
+
+        if TypeSearch ~= "Any" and modelItem:GetAttribute("Type") ~= TypeSearch  then
+            continue
+        end
+
+        while (itemAmount >= 1 and dropAmount < limit) do
+            if (MainFunctions.DropItem(name) == true) then
+                itemAmount -= 1
+                dropAmount += 1
+            else
+                break
+            end
+        end
+    end
+end
+
+function GetItems(limit)
+    limit = limit or math.huge
+
+    local HumanoidRootPart = LocalPlayer.Character.HumanoidRootPart
+    local SavedCFrame = HumanoidRootPart.CFrame
+
+    local items = {}
+
+    for _, obj in ipairs(game:GetService("Workspace").Interact:GetChildren()) do
+        local objType = obj:GetAttribute("Type")
+
+        if objType == nil or not (objType == "Tool" or objType == "Food") then
+            continue
+        end
+
+        if ItemOptions.Type ~= "Any" and objType ~= ItemOptions.Type  then
+            continue
+        end
+
+        if ItemOptions.ItemName ~= "Any" and obj.Name ~= ItemOptions.ItemName  then
+            continue
+        end
+
+        local distance = (SavedCFrame.Position - obj.PrimaryPart.Position).Magnitude
+
+        table.insert(items, {obj, distance})
+    end
+
+    table.sort(items, function(a, b)
+        if ItemOptions.Priority == "Nearest" then
+            return a[2] < b[2]
+        elseif ItemOptions.Priority == "Farthest" then
+            return a[2] > b[2]
+        end
+    end)
+
+    local amount = 0
+
+    for _, itemTable in ipairs(items) do
+        local obj = itemTable[1]
+
+        if (amount >= limit) then
+            break
+        end
+
+        if MainFunctions.SaveItem(obj) == true then
+            amount += 1
+        end
+    end
+
+    HumanoidRootPart.CFrame = SavedCFrame
+end
+
+function GetBuildObjects(name, amount)
+    local SavedCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
+
+    local BuildObjects = {}
+
+    for _, obj in ipairs(game:GetService("Workspace").Interact:GetChildren()) do
+        if (#BuildObjects > amount) then
+            break
+        end
+
+        if name ~= "Any" and string.match(obj.Name, "^"..name) == nil then
+            continue
+        end
+
+        if (obj:GetAttribute("Transparent")) then
+            continue
+        end
+
+        if (obj:GetAttribute("IgnoreScript")) then
+            continue
+        end
+
+        if (obj:GetAttribute("HackCFrame")) then
+            local HackCFrame = obj:GetAttribute("HackCFrame")
+
+            if obj:GetPivot() == HackCFrame then
+                continue
+            end
+        end
+
+        local owner = obj:GetAttribute("Owner")
+
+        if owner then
+            if owner ~= LocalPlayer.UserId then
+                continue
+            end
+        end
+
+        local distance = (SavedCFrame.Position - obj:GetPivot().Position).Magnitude
+        table.insert(BuildObjects, {obj, distance})
+    end
+
+    table.sort(BuildObjects, function(a, b)
+        if BuildingOptions.Priority == "Nearest" then
+            return a[2] < b[2]
+        elseif BuildingOptions.Priority == "Farthest" then
+            return a[2] > b[2]
+        end
+    end)
+
+    return TableUtil.Map(BuildObjects, function(value)
+        return value[1]
+    end)
+end
+
+function GetOwnedObjects(name, amount)
+    local OwnedObjects = {}
+
+    for _, obj in ipairs(game:GetService("Workspace").Interact:GetChildren()) do
+        if (#OwnedObjects > amount) then
+            break
+        end
+
+        if name ~= "Any" and string.match(obj.Name, "^"..name) == nil then
+            continue
+        end
+
+        local owner = obj:GetAttribute("Owner")
+
+        if owner and owner ~= LocalPlayer.UserId then
+            continue
+        end
+
+        table.insert(OwnedObjects, obj)
+    end
+
+    return OwnedObjects
+end
+
+function ReturnAllMaterials()
+    MainFunctions.UpdatePlayerData()
+
+    --local SavedCFrame = LocalPlayer.Character:GetPivot()
+
+    local OwnedObjects = GetOwnedObjects("Any", math.huge)
+
+    if #OwnedObjects == 0 then
+        return false
+    end
+
+    if MainFunctions.GetPlayerData().Wearing.Tool ~= "Hammer" then
+        if not MainFunctions.Equip("Hammer") then
+            MainFunctions.Unequip()
+            if MainFunctions.Craft("Hammer", true) then
+                MainFunctions.Equip("Hammer")
+            else
+                MainFunctions.Notify("You don't have a hammer. Failed to auto-craft")
+                return false
+            end
+        end
+    end
+
+    for _, obj in ipairs(OwnedObjects) do
+        MainFunctions.UseTool(obj.PrimaryPart)
+    end
+
+    MainFunctions.Unequip()
+end
+
+function SetTransparency(obj, number, exclude)
+    if (obj:IsA("Model")) then
+        for _, v in ipairs(obj:GetDescendants()) do
+            if v:IsA("BasePart") then
+                SetTransparency(v, number, exclude)
+            end
+        end
+    elseif (obj:IsA("BasePart")) then
+        if (exclude and table.find(exclude, obj.Name)) then
+            return
+        end
+
+        obj.Transparency = number
+        obj.CanCollide = false
+    end
+end
+
+function GetPickedUp()
+    for _, v in ipairs(game:GetService("Workspace").Interact:GetChildren()) do
+        if v:GetAttribute("PickedUp") == true then
+            if v:GetAttribute("PickedUpID") == LocalPlayer.UserId then
+                return v
+            end
+        end
+    end
+end
+
+function StartBuilding(dataBuild)
+    StopBuilding()
+    local BuildingFlag = true
+
+    local BeforeTrove = BuildingTrover:Extend()
+    local AfterTrove = BuildingTrover:Extend()
+
+    local function cleanPickedUp()
+        local PickedUp = GetPickedUp()
+
+        if PickedUp then 
+            repeat
+                MainFunctions.PlaceDrop(Vector3.new(), CFrame.new(), true)
+                task.wait()
+            until PickedUp:GetAttribute("PickedUp") == false
+        end
+    end
+
+    AfterTrove:Add(cleanPickedUp)
+
+    AfterTrove:Add(function()
+        BuildingFlag = false
+    end)
+
+    local SavedCFrame = nil
+
+    local dataOffset = table.remove(dataBuild, #dataBuild)
+
+    local CenterCFrame = game.Workspace.CurrentCamera.CFrame
+
+    local TemplateModel = Instance.new("Model", game.Workspace)
+    TemplateModel.Name = "Template"
+    TemplateModel:PivotTo(CFrame.new((CenterCFrame * CFrame.new(0,0, dataOffset)).Position))
+
+    AfterTrove:Add(TemplateModel)
+
+    local BuildMaterials = {}
+
+    for _, data in ipairs(dataBuild) do
+        if not BuildingFlag then
+            break
+        end
+
+        local materialName = data[1]
+        local buildObject = nil
+
+        if typeof(materialName) == "string" then
+            buildObject = unpack(GetBuildObjects(materialName, 1)) or MainFunctions.Craft(materialName, false)
+        else
+            buildObject = data[1]
+
+            if not buildObject:IsA("Model") then
+                break
+            end
+
+            local owner = buildObject:GetAttribute("Owner")
+            if owner ~= nil and owner ~= LocalPlayer.UserId then
+                MainFunctions.Notify("Object is not owned by this player")
+                break
+            end
+        end
+
+        if (not buildObject) then
+            break
+        end
+
+        buildObject:SetAttribute("IgnoreScript", true)
+        BeforeTrove:Add(function()
+            buildObject:SetAttribute("IgnoreScript", false)
+        end)
+
+        table.insert(BuildMaterials, {buildObject})
+    end
+
+    if (#BuildMaterials < #dataBuild) then
+        StopBuilding()
+        return
+    end
+
+    for i, data in ipairs(dataBuild) do
+        local DataPosition = Vector3.new(unpack(data[2]))
+	    local DataRotation = CFrame.new(unpack(data[3]))
+
+        local buildObject = BuildMaterials[i][1]
+
+        local NewPos = CFrame.new((TemplateModel:GetPivot()).Position):PointToWorldSpace(DataPosition)    
+
+        local cloneObject = buildObject:Clone()
+        cloneObject.Parent = TemplateModel
+        cloneObject.PrimaryPart.Anchored = true
+
+        local PrimaryPart = nil
+
+        if buildObject:GetAttribute("Type") == "Tool" then
+            PrimaryPart = cloneObject:FindFirstChild("Hitbox")
+        else
+            PrimaryPart = cloneObject:FindFirstChildWhichIsA("MeshPart") or cloneObject.PrimaryPart
+        end
+
+        cloneObject:PivotTo(CFrame.new(NewPos))
+        cloneObject:PivotTo(CFrame.new(NewPos) * (DataRotation * PrimaryPart:GetPivot().Rotation:Inverse()))
+
+        SetTransparency(cloneObject, 0.5, {"Hitbox"})
+        cloneObject:SetAttribute("IgnoreScript", true)
+
+        table.insert(BuildMaterials[i], cloneObject)
+    end
+    
+    BeforeTrove:Connect(game:GetService("UserInputService").InputChanged, function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseWheel) then
+            local Rotation = input.Position.Z
+
+            dataOffset -= Rotation
+        end
+    end)
+
+    local CurrentRotation = "X"
+
+    local ResetRotation = TemplateModel:GetPivot().Rotation
+    local NewRotation = ResetRotation
+
+    BeforeTrove:Connect(game:GetService("UserInputService").InputBegan, function(input)
+        if (input.KeyCode == Enum.KeyCode.E) then
+            BeforeTrove:Clean()
+            SavedCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
+
+            Build()
+            AfterTrove:Clean()
+        elseif (input.KeyCode == Enum.KeyCode.One) then
+            CurrentRotation = "X"
+        elseif (input.KeyCode == Enum.KeyCode.Two) then
+            CurrentRotation = "Y"
+        elseif (input.KeyCode == Enum.KeyCode.Three) then
+            CurrentRotation = "Z"
+        elseif (input.KeyCode == Enum.KeyCode.R) then
+            if (CurrentRotation == "X") then
+                NewRotation = NewRotation * CFrame.fromEulerAnglesXYZ(math.rad(15), 0, 0)
+            elseif (CurrentRotation == "Y") then
+                NewRotation = NewRotation * CFrame.fromEulerAnglesXYZ(0, math.rad(15), 0)
+            elseif (CurrentRotation == "Z") then
+                NewRotation = NewRotation * CFrame.fromEulerAnglesXYZ(0, 0, math.rad(15))
+            end
+        elseif (input.KeyCode == Enum.KeyCode.X) then
+            NewRotation = ResetRotation
+        end
+    end)
+
+    BeforeTrove:BindToRenderStep("UpdateTemplate", Enum.RenderPriority.Last.Value, function()
+        CenterCFrame = game.Workspace.CurrentCamera.CFrame
+        TemplateModel:PivotTo(
+            CFrame.new((CenterCFrame * CFrame.new(0,0, dataOffset)).Position)
+            * NewRotation
+        )
+    end)
+
+    BeforeTrove:Add(cleanPickedUp)
+    
+
+    function Build()
+        AfterTrove:Add(function()
+            LocalPlayer.Character.HumanoidRootPart.CFrame = SavedCFrame
+            LocalPlayer.Character.HumanoidRootPart.AssemblyAngularVelocity = Vector3.new(0,0,0)
+            LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0,0,0)
+        end)
+
+        for i, data in ipairs(dataBuild) do
+            if not BuildingFlag then
+                break
+            end
+
+            if (TemplateModel == nil) then
+                break
+            end
+
+            local buildObject, cloneObject = unpack(BuildMaterials[i])
+
+            if buildObject:GetAttribute("PickedUp") == true then
+                StopBuilding()
+                break
+            end
+    
+            local NewPos = cloneObject:GetPivot().Position
+            local NewRotation = cloneObject:GetPivot().Rotation
+
+            while (buildObject:GetPivot().Position - NewPos).Magnitude > 0.2 and BuildingFlag == true do
+                if buildObject:GetAttribute("PickedUp") ~= true then
+                    MainFunctions.Pickup(buildObject)
+                else
+                    if MainFunctions.PlaceDrop(NewPos, NewRotation, true) == false then
+                        local Pivot = buildObject:GetPivot()
+    
+                        MainFunctions.PlaceDrop(Pivot.Position, Pivot.Rotation, true)
+    
+                        StopBuilding()
+                        break
+                    end
+                end
+
+                task.wait()
+            end
+
+            if BuildingFlag then
+                buildObject:SetAttribute("HackCFrame", buildObject:GetPivot())
+            end
+        end
+    end
+end
+
+function StopBuilding()
+    BuildingTrover:Clean()
+end
+
+function StartFarming()
+    StopFarming()
+
+    local typeFarm = FarmingOptions.Type
+
+    local FarmingFlag = true
+
+    FarmingTrover:Add(function() 
+        FarmingFlag = false
+    end)
+    
+    local function IsNeededTool(toolName)
+        if typeFarm == "Wood" and string.match(toolName, "%sAxe") ~= nil then
+            return true
+        end
+
+        if typeFarm == "Stone" and string.match(toolName, "%sPickaxe") ~= nil then   
+            return true
+        end
+
+        return false
+    end
+
+    local function GetToolLevel(toolName)
+        local Tool = game:GetService("ReplicatedStorage").Craftable:FindFirstChild(toolName)
+
+        if not Tool then
+            return false
+        end
+
+        local Level = Tool:GetAttribute("Level")
+
+        return Level
+    end
+
+    MainFunctions.UpdatePlayerData()
+
+    local ToolName, ToolLevel = nil, 0
+
+    for _, itemData in ipairs(MainFunctions.GetBackpackItems()) do
+        local itemName = itemData[1]
+
+        if not IsNeededTool(itemName) then
+            continue
+        end
+
+        local Level = GetToolLevel(itemName)
+
+        if Level and Level > ToolLevel then
+            ToolName = itemName
+            ToolLevel = Level
+        end
+    end
+
+    if IsNeededTool(MainFunctions.GetPlayerData().Wearing.Tool) then
+        local EquippedTool = MainFunctions.GetPlayerData().Wearing.Tool
+        local Level = GetToolLevel(EquippedTool)
+
+        if Level and Level > ToolLevel then
+            ToolName = EquippedTool
+            ToolLevel = Level
+        else
+            MainFunctions.Unequip()
+            MainFunctions.UpdatePlayerData()
+        end
+    end
+
+    if ToolName == nil then
+        return false
+    end
+
+    if not MainFunctions.Equip(ToolName) and MainFunctions.GetPlayerData().Wearing.Tool ~= ToolName then
+        --Can't equip because a tool is already in use
+        return false
+    end
+
+    local ModelTool = nil
+
+    while not ModelTool or not FarmingFlag do
+        ModelTool = game:GetService("Workspace").Tools:FindFirstChild(tostring(LocalPlayer.UserId))
+        task.wait()
+    end
+
+    FarmingTrover:BindToRenderStep("CheckEquippedTool", Enum.RenderPriority.Last.Value, function(delta)
+        if not FarmingFlag then
+            return
+        end
+
+        if not ModelTool or not ModelTool:IsDescendantOf(game.Workspace) then
+            StopFarming()
+        end
+    end)
+
+    for _, decoration in ipairs(game:GetService("Workspace").Decoration:GetChildren()) do
+        if not FarmingFlag then
+            break
+        end
+
+        if typeFarm == "Wood" and string.match(decoration.Name, "Tree") == nil then
+            continue
+        end
+
+        if typeFarm == "Stone" and string.match(decoration.Name, "Stone") == nil then   
+            continue
+        end
+        
+        if ModelTool then
+            local WeldConstraint = ModelTool:FindFirstChildWhichIsA("WeldConstraint")
+            WeldConstraint.Part0 = nil
+
+            ModelTool:PivotTo(decoration:GetPivot())
+        end
+
+        repeat
+            MainFunctions.Teleport(decoration:GetPivot())
+            MainFunctions.UseTool()
+            
+            task.wait()
+        until decoration == nil or decoration.Parent == nil  or FarmingFlag == false
+    end
+
+    FarmingTrover:Clean()
+end
+
+function StopFarming()
+    FarmingTrover:Clean()
+end
